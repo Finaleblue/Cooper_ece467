@@ -134,7 +134,7 @@ class DocumentClass(Document):
         self.SumN = 0;
     def Probability(self,word):
         N = self.term_freq(word) #*self.get_term_weight(word)
-        prob = (0.000001+N)/math.sqrt(self.SumN)+0.000001
+        prob = N+0.000001/math.sqrt(self.SumN)+1
         return math.log10(prob)
 
     def __add__(self,other):

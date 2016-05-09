@@ -6,6 +6,8 @@ arg1 = sys.argv[1]
 arg2 = sys.argv[2]
 success = 0
 total = 0
+poscount = 0
+negcount = 0
 with open(arg1, 'r') as output:
     for line in output:
         entity1 = json.loads(line)
@@ -15,6 +17,8 @@ with open(arg1, 'r') as output:
                 if (entity1['review_id'] == entity2['review_id']):
                     print('review id: {}, stars: {}, predict: {}' \
                             .format(entity1['review_id'], entity2['stars'], entity1['stars']))
+                    if entity2['stars'] > 3 : poscount += 1
+                    elif entity2['stars'] < 3 : negcount += 1
                     if (entity1['stars'] == 'pos' \
                             and entity2['stars']>3):
                         success += 1
@@ -24,3 +28,4 @@ with open(arg1, 'r') as output:
         total += 1
 
 print('success rate: {} \ntotal:{}'.format(success/total, total))
+print('pos: {}, neg: {}'.format(poscount, negcount))
