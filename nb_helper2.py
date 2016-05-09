@@ -1,16 +1,20 @@
 from __future__ import division
+import re, os, io, math
+import operator
+import json
+
 from nltk.corpus import stopwords 
 from nltk import tokenize
 from nltk.util import ngrams
 from nltk.stem.porter import PorterStemmer
-import re, os, io, math
+
 
 class BagOfWords(object):
     def __init__(self):
         self.number_of_vocabs = 0
         self.bag_of_words = {}
         
-    def __add__(self,other):
+    def __add__(self, other):
         erg = BagOfWords()
         sum = erg.bag_of_words
         for key in self.bag_of_words:
@@ -22,12 +26,12 @@ class BagOfWords(object):
                 sum[key] = other.bag_of_words[key]
         return erg
         
-    def put_in(self,word):
+    def put_in(self,word,ngram):
         self.number_of_vocabs += 1
         if word in self.bag_of_words:
-            self.bag_of_words[word] += 1
+            self.bag_of_words[word] += ngram
         else:
-            self.bag_of_words[word] = 1
+            self.bag_of_words[word] = ngram
     
     def len(self):
         return len(self.bag_of_words)
@@ -39,11 +43,13 @@ class BagOfWords(object):
     def get_bag(self):
         return self.bag_of_words
         
-    def term_freq(self,word):
+    def term_freq(self, word):
         if word in self.bag_of_words:
             return self.bag_of_words[word]
         else:
             return 0
+
+
 class Document(object):
     vocabs = BagOfWords()
     term_weight ={} 
@@ -54,27 +60,36 @@ class Document(object):
         self.number_of_docs = 1
         Document.vocabs = vocabulary
         Document.stops = set(stopwords.words('english'))
+        Document.stops.update(['food', 'drink', 'place', 'one', 'us', 'would',
+                               'service', 'restaurant', 'get', 'order', 'www',
+                               'http', 'yelp', 'com'])
 
-    def read(self,filename, learn=False):
-        text = io.open(filename,'r', encoding = 'utf-8').read()
+    def read(self, text, learn=False):
+        text = text.lower()
         st = PorterStemmer()
         tknzr = tokenize.RegexpTokenizer(r'\w+')
         vocabs = tknzr.tokenize(text)
-        for word in vocabs:
-            if word in Document.stops:
-                vocabs.remove(word)
+        vocabs = [word for word in vocabs if word not in Document.stops]
         stemmed = []
         for v in vocabs:
             stemmed.append(st.stem(v))
+        stemmed3 = ngrams(stemmed, 3)
         self.number_of_vocabs = 0
         #vocabs = list(ngrams(vocabs,2))
         #print(vocabs[2])
         for word in stemmed:
-            self.word_bag.put_in(word)
-            self.number_of_vocabs += 1
             if learn:
-                Document.vocabs.put_in(word)
-         
+                Document.vocabs.put_in(word,1)
+                
+            self.word_bag.put_in(word,1)
+            self.number_of_vocabs += 1
+        for word in stemmed3:
+            if learn:
+                Document.vocabs.put_in(word,30)
+                
+            self.word_bag.put_in(word,30)
+            self.number_of_vocabs += 1
+
     def __add__(self,other):
         res = Document(Document.vocabs)
         res.word_bag = self.word_bag + other.word_bag    
@@ -109,14 +124,17 @@ class Document(object):
                 intersection += [word]
         return intersection
 
+# represents the document class
+# in our case, there will be two doc classes:
+# "pos" and "neg"
 class DocumentClass(Document):
     def __init__(self, vocabulary):
         Document.__init__(self, vocabulary)
         self.number_of_docs = 0
         self.SumN = 0;
     def Probability(self,word):
-        N = self.term_freq(word) *self.get_term_weight(word)
-        prob = (1+N)/math.sqrt(self.SumN)
+        N = self.term_freq(word) #*self.get_term_weight(word)
+        prob = (0.000001+N)/math.sqrt(self.SumN)+0.000001
         return math.log10(prob)
 
     def __add__(self,other):
@@ -130,14 +148,16 @@ class DocumentClass(Document):
 
     def set_SumN(self):
         for i in self.words():
-            self.SumN +=math.pow(self.term_freq(i),2)*self.get_term_weight(i)+1
+            self.SumN += (math.pow(self.term_freq(i),2))
 
     def num_docs(self):
         return self.number_of_docs
     
+
 class Classifier(object):
     def __init__(self):
-        self.classes = {}
+        self.classes = {'pos': DocumentClass(BagOfWords()), 
+                        'neg': DocumentClass(BagOfWords())}
         self.vocabs = BagOfWords()
         self.number_of_documents = 0 
     
@@ -149,26 +169,44 @@ class Classifier(object):
                 sum +=  WaF[word]
         return sum
         
-    def learn(self, filedir, class_name):
-        c = DocumentClass(self.vocabs)
-        d = Document(self.vocabs)
-        print(filedir +" " + class_name)
-        d.read(filedir, learn = True)
-        c += d
-        if (class_name not in self.classes):
-            self.classes[class_name] = c
+    def learn(self, text, star):
+        if (star == 3):     # we dont want to learn from a neutral review 
+            return          # because it has mixed pos and neg features
         else:
-            self.classes[class_name] += c
+            category = DocumentClass(self.vocabs)
+            doc = Document(self.vocabs)
+            doc.read(text, learn=True)
+            category += doc
+            if (star <= 2):
+                self.classes['neg'] += category
+            else:
+                self.classes['pos'] += category
         self.number_of_documents += 1
+
     def get_statistics(self):
         print('calculating statistics...')
-        for w in Document.vocabs.words():
-            for c in self.classes:
-                temp = 1
-                if w in self.classes[c].words():
-                     temp += 1
-                     continue
-            Document.term_weight[w]=math.log10(self.number_of_documents/temp)
+        #for w in Document.vocabs.words():
+        #    for c in self.classes:
+        #        temp = 1
+        #        if w in self.classes[c].words():
+        #             temp += 1
+        #             continue
+        #    Document.term_weight[w]=math.log10(self.number_of_documents/temp)
+        for word in self.classes['pos'].word_bag.get_bag():
+            if word in self.classes['neg'].word_bag.get_bag():
+                self.classes['pos'].word_bag.get_bag()[word] = 0
+                self.classes['neg'].word_bag.get_bag()[word] = 0
+
+        for c in self.classes:
+            print("most frequent words in " + c + " are:")
+            word_map = self.classes[c].word_bag.get_bag()
+            sorted_tw = sorted(word_map.items(),
+                               key=operator.itemgetter(1),
+                               reverse=True)[:15]
+            for tw in sorted_tw:
+                print(tw)
+
+
         for c in self.classes:
             print(str(c), self.classes[c].num_docs())
             self.classes[c].set_SumN()
@@ -198,6 +236,7 @@ class Classifier(object):
                 prob_list.append([dclass,prob])
             prob_list.sort(key = lambda x: x[1], reverse = True)
             return prob_list[0][0]
+
 
    # def save(self, path):
    #     output = io.open(path,'wb')
