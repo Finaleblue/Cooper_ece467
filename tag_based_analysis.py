@@ -16,13 +16,15 @@ import os
 import re
 import operator
 import json
+import random
+import math
 
 nltk_tokenizer = nltk.tokenize.RegexpTokenizer(r'\w+')
 nltk_stemmer = nltk.stem.porter.PorterStemmer()
 stopwords = set(nltk.corpus.stopwords.words('english'))
 stopwords.update(['food', 'drink', 'place', 'one', 'us', 'would',
                   'service', 'restaurant', 'get', 'order', 'www',
-                  'http', 'yelp', 'com'])
+                  'http', 'yelp', 'com', 'got'])
 stopwords.remove('not')
 
 class Reader(object):
@@ -61,29 +63,30 @@ class Trainer(object):
                 else:
                     mybag[word] = 1
 
-           #for word in trigrams:
-           #    if word in mybag.keys():
-           #        mybag[word] += 30
-           #    else:
-           #        mybag[word] = 30
-           
+            for word in trigrams:
+                if word in mybag.keys():
+                    mybag[word] += 30 
+                else:
+                    mybag[word] = 25
+            
     def save(self):
+
         self.pos_bag = sorted(self.pos_bag.items(),
                          key=operator.itemgetter(1),
-                         reverse=True)[:100]
+                         reverse=True)[0:1500]
         self.neg_bag = sorted(self.neg_bag.items(),
                          key=operator.itemgetter(1),
-                         reverse=True)[:100]
+                         reverse=True)[0:1500]
 
-        with open('./dicts/pos_feature.yml', 'wb') as pos_feature:
+        with open('./dicts/pos_feature.yml', 'w') as pos_feature:
             for tuples in self.pos_bag:
-                outstring = '{}: [{}]\n'.format(tuples[0], 'positive')
-                pos_feature.write(bytes(outstring, 'UTF-8'))
+                outstring = '{}: {}\n'.format(tuples[0], tuples[1])
+                pos_feature.write(outstring)
 
-        with open('./dicts/neg_feature.yml', 'wb') as neg_feature:
+        with open('./dicts/neg_feature.yml', 'w') as neg_feature:
             for tuples in self.neg_bag:
-                outstring = '{}: [{}]\n'.format(tuples[0], 'negative')
-                neg_feature.write(bytes(outstring, 'UTF-8'))
+                outstring = '{}: {}\n'.format(tuples[0], tuples[1])
+                neg_feature.write(outstring)
 
 class Classifier(object):
    
@@ -98,8 +101,8 @@ class Classifier(object):
              open('./dicts/neg_feature.yml', 'r') as negatives,\
              open('./dicts/inc.yml', 'r') as inc,\
              open('./dicts/dec.yml', 'r') as dec,\
-             open('./dicts/inv.yml', 'r') as inv:
-             self.pos_features = yaml.load(positives)
+             open('./dicts/inv.yml', 'r') as inv: 
+             self.pos_features = yaml.load(positives) 
              self.neg_features = yaml.load(negatives)
              self.inc_features = yaml.load(inc)
              self.dec_features = yaml.load(dec)
@@ -112,25 +115,34 @@ class Classifier(object):
         return total_score
 
     def score(self, text):    
-        current_score = 0
+        total_score = 0
         prev_word = None
         for current_word in text:
+            current_score = 0
+            #print('current word is {}'.format(current_word))
             if current_word in self.pos_features:
-                current_score += 1
+                current_score += math.log2(self.pos_features[current_word])
+            #    #print('+1')
 
             if current_word in self.neg_features:
-                current_score -= 1
+                current_score -= math.log2(self.neg_features[current_word])
+            #    print('-1')
 
             if prev_word is not None:
+            #    print('prev word is {}'.format(prev_word))
                 if prev_word in self.inc_features:
-                    current_score *= 2.0
+                    current_score *= 3.0 
+            #        print('*2')
                 elif prev_word in self.dec_features:
-                    current_score /= 2.0
+                    current_score /= 3.0
+            #        print('/2')
                 elif prev_word in self.inv_features:
                     current_score *= -1.0
+            #        print('-')
             prev_word = current_word
+            total_score += current_score
 
-        return current_score
+        return total_score
 
            
 #class Splitter(object):
@@ -256,8 +268,7 @@ if __name__ == "__main__":
 
     trainer = Trainer()
     # splitter = Splitter()
-    # postagger = POSTagger()
-
+    # postagger = POSTagger() 
     prompt = input("Enter the path for the train file\n")
 
     with open(prompt, 'r') as train_file:
@@ -279,7 +290,7 @@ if __name__ == "__main__":
     with open(test_path, 'r') as test_file, open(output_path, 'w') as output_file:
         for text in test_file:
             entity = json.loads(text)
-            #if entity['stars'] == 3: continue
+            if entity['stars'] == 3: continue
             
             ngrams = Reader.read(entity['text'])
             #unigrams = splitter.split1(text)
@@ -296,7 +307,14 @@ if __name__ == "__main__":
             score = classifier.evaluate(ngrams)
             if score > 0 : prediction = 'pos'
             elif score < 0 : prediction = 'neg'
-            else: prediction = 'neutral'
+            else:
+                r=random.random()
+                if (r>0.5):
+                    prediction = 'pos'
+                else:
+                    prediction = 'neg'
+            #        print('score is 0 random# is {}. prediction is {}'.format(r,prediction))
+
             print(entity['review_id'] + " "  + str(prediction))
 
             outstring = {
