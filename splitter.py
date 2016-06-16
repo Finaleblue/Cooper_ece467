@@ -1,3 +1,7 @@
+#Cooper Union Natural Language Processing Final Project
+#Author: Eui Han
+#Version: 04/26/16
+
 import json
 import random
 

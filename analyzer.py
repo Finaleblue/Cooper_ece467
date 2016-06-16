@@ -1,3 +1,7 @@
+#Cooper Union Natural Language Processing Final Project
+#Author: Eui Han
+#Version: 04/26/16
+
 from __future__ import division
 import sys
 import json
